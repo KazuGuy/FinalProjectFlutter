@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../admin/hotel_list_page.dart'; // Pastikan path ini benar
+import '../auth/login_page.dart';
 
 class DashboardAdminPage extends StatelessWidget {
   const DashboardAdminPage({super.key});
@@ -13,6 +14,18 @@ class DashboardAdminPage extends StatelessWidget {
         backgroundColor: const Color(0xFF0083B0),
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+             IconButton(
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: 'Logout',
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginPage()),
+              );
+            },
+          ),
+        ]
       ),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
