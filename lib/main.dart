@@ -16,7 +16,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false, // Menghilangkan pita "DEBUG" merah di pojok kanan atas
       theme: ThemeData(
         // Menyesuaikan tema warna dasar dengan palet UI kita (Biru BaliStay)
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0083B0)),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0194F3)),
         useMaterial3: true, // Mengaktifkan gaya UI Android modern
         fontFamily: 'Roboto', // Default font yang bersih
       ),

@@ -178,7 +178,7 @@ class _LoginPageState extends State<LoginPage> {
                   child: ElevatedButton(
                     onPressed: _isLoginView ? _handleLogin : _handleRegister,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0083B0),
+                      backgroundColor: const Color(0xFF0194F3),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                       elevation: 0,
                     ),
@@ -205,7 +205,7 @@ class _LoginPageState extends State<LoginPage> {
                         children: [
                           TextSpan(
                             text: _isLoginView ? "Sign Up" : "Sign In",
-                            style: const TextStyle(color: Color(0xFF0083B0), fontWeight: FontWeight.bold),
+                            style: const TextStyle(color: Color(0xFF0194F3), fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),

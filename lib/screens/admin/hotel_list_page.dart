@@ -29,15 +29,25 @@ class _HotelListPageState extends State<HotelListPage> {
   // Fungsi untuk menangani hapus data hotel
   void _handleDelete(int id) async {
     try {
-      await _apiService.deleteHotel(id);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Hotel berhasil dihapus!"),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      _refreshHotelList(); // Refresh tampilan setelah berhasil hapus
+      final success = await _apiService.deleteHotel(id);
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Hotel berhasil dihapus!"),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _refreshHotelList(); // Refresh tampilan setelah berhasil hapus
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Gagal menghapus hotel."),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -49,31 +59,40 @@ class _HotelListPageState extends State<HotelListPage> {
     }
   }
 
+  String _formatPrice(dynamic price) {
+    if (price == null) return "0";
+    final p = double.tryParse(price.toString())?.toInt() ?? 0;
+    return p.toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (m) => '${m[1]}.',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    const Color travelokaBlue = Color(0xFF0194F3);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: const Text("Kelola Data Hotel", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF0083B0),
+        backgroundColor: travelokaBlue,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: _refreshHotelList, // Tombol refresh manual di pojok kanan atas
+            onPressed: _refreshHotelList, // Tombol refresh manual
           )
         ],
       ),
       body: FutureBuilder<List<dynamic>>(
         future: _hotelListFuture,
         builder: (context, snapshot) {
-          // 1. Kondisi Loading saat ambil data dari API CI4
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
           
-          // 2. Kondisi jika terjadi Error (misal server CI4 mati)
           if (snapshot.hasError) {
             return Center(
               child: Padding(
@@ -91,6 +110,7 @@ class _HotelListPageState extends State<HotelListPage> {
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: _refreshHotelList,
+                      style: ElevatedButton.styleFrom(backgroundColor: travelokaBlue, foregroundColor: Colors.white),
                       child: const Text("Coba Lagi"),
                     )
                   ],
@@ -99,73 +119,152 @@ class _HotelListPageState extends State<HotelListPage> {
             );
           }
 
-          // 3. Kondisi jika data kosong atau null
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(
               child: Text("Belum ada data hotel. Silakan tambah baru."),
             );
           }
 
-          // 4. Kondisi Berhasil: Menampilkan list hotel dengan Card modern
           List hotels = snapshot.data!;
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: hotels.length,
             itemBuilder: (context, index) {
               var hotel = hotels[index];
+              int discount = int.tryParse(hotel['discount']?.toString() ?? '0') ?? 0;
+              double rating = double.tryParse(hotel['rating']?.toString() ?? '0.0') ?? 0.0;
+              String type = hotel['type']?.toString().toUpperCase() ?? 'HOTEL';
+
               return Card(
                 color: Colors.white,
                 elevation: 0,
                 margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0F4F8),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.hotel_rounded, color: Color(0xFF0083B0)),
-                  ),
-                  title: Text(
-                    hotel['name'] ?? 'Tanpa Nama',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  subtitle: Column(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: Colors.grey.shade200, width: 1),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14.0),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 4),
-                      Text("Harga: Rp ${hotel['price'] ?? 0} / malam"),
-                      Text(
-                        hotel['address'] ?? '-',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                      // Leading Icon / Hotel Type
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF7FF),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.hotel_rounded, color: travelokaBlue, size: 28),
                       ),
-                    ],
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Tombol Edit (Kirim data hotel ke HotelFormPage)
-                      IconButton(
-                        icon: const Icon(Icons.edit_rounded, color: Colors.orange),
-                        onPressed: () async {
-                          bool? isRefreshed = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => HotelFormPage(hotelData: hotel),
+                      const SizedBox(width: 14),
+
+                      // Hotel Details
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    hotel['name'] ?? 'Tanpa Nama',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (discount > 0)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFECE0),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      "$discount% OFF",
+                                      style: const TextStyle(
+                                        color: Color(0xFFFF6D00),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                          );
-                          if (isRefreshed == true) _refreshHotelList();
-                        },
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.grey.shade300, width: 0.5),
+                                  ),
+                                  child: Text(
+                                    type,
+                                    style: TextStyle(fontSize: 10, color: Colors.grey.shade800, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
+                                Text(
+                                  rating.toStringAsFixed(1),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "(${hotel['facilities_count']} fas.)",
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              "Rp ${_formatPrice(hotel['price'])} / malam",
+                              style: const TextStyle(
+                                color: travelokaBlue,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              "Koordinat: ${hotel['latitude'] ?? '0.0'}, ${hotel['longitude'] ?? '0.0'}",
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                          ],
+                        ),
                       ),
-                      // Tombol Hapus dengan Konfirmasi Dialog (Nilai plus dari dosen)
-                      IconButton(
-                        icon: const Icon(Icons.delete_rounded, color: Colors.redAccent),
-                        onPressed: () => _showDeleteDialog(hotel['id'], hotel['name']),
-                      ),
+                      const SizedBox(width: 8),
+
+                      // Actions Column
+                      Column(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit_rounded, color: Colors.orange, size: 22),
+                            onPressed: () async {
+                              bool? isRefreshed = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => HotelFormPage(hotelData: hotel),
+                                ),
+                              );
+                              if (isRefreshed == true) _refreshHotelList();
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_rounded, color: Colors.redAccent, size: 22),
+                            onPressed: () => _showDeleteDialog(
+                              int.parse(hotel['id'].toString()),
+                              hotel['name'] ?? '',
+                            ),
+                          ),
+                        ],
+                      )
                     ],
                   ),
                 ),
@@ -174,9 +273,8 @@ class _HotelListPageState extends State<HotelListPage> {
           );
         },
       ),
-      // Tombol Tambah Data (+) di pojok kanan bawah
       floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF0083B0),
+        backgroundColor: travelokaBlue,
         child: const Icon(Icons.add, color: Colors.white),
         onPressed: () async {
           bool? isRefreshed = await Navigator.push(
@@ -189,7 +287,6 @@ class _HotelListPageState extends State<HotelListPage> {
     );
   }
 
-  // Fungsi memunculkan pop-up konfirmasi sebelum benar-benar menghapus data
   void _showDeleteDialog(int id, String name) {
     showDialog(
       context: context,

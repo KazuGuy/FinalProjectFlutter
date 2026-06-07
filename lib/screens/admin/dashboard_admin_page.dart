@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../admin/hotel_list_page.dart'; // Pastikan path ini benar
 import '../auth/login_page.dart';
+import 'poi_list_page.dart';
+import 'criteria_page.dart';
 
 class DashboardAdminPage extends StatelessWidget {
   const DashboardAdminPage({super.key});
@@ -10,12 +12,15 @@ class DashboardAdminPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text("Admin Dashboard", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF0083B0),
+        title: const Text(
+          "Admin Dashboard",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: const Color(0xFF0194F3),
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-             IconButton(
+          IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Logout',
             onPressed: () {
@@ -25,14 +30,17 @@ class DashboardAdminPage extends StatelessWidget {
               );
             },
           ),
-        ]
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Welcome back, Admin!", style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+            const Text(
+              "Welcome back, Admin!",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 20),
             Expanded(
               child: GridView.count(
@@ -40,14 +48,35 @@ class DashboardAdminPage extends StatelessWidget {
                 crossAxisSpacing: 15,
                 mainAxisSpacing: 15,
                 children: [
-                  _buildMenuCard(context, Icons.hotel, "Kelola Hotel", Colors.blue, () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => const HotelListPage()));
+                  _buildMenuCard(
+                    context,
+                    Icons.hotel,
+                    "Kelola Hotel",
+                    Colors.blue,
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const HotelListPage(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildMenuCard(context, Icons.analytics, "Kriteria SPK", Colors.orange, () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const CriteriaPage()));
                   }),
-                  _buildMenuCard(context, Icons.analytics, "Kriteria SPK", Colors.orange, () {}),
-                  _buildMenuCard(context, Icons.map, "Data POI", Colors.green, () {}),
-                  _buildMenuCard(context, Icons.logout, "Logout", Colors.red, () {
-                    Navigator.pop(context); // Kembali ke login
+                  _buildMenuCard(context, Icons.map, "Data POI", Colors.green, () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const PoiListPage()));
                   }),
+                  _buildMenuCard(
+                    context,
+                    Icons.logout,
+                    "Logout",
+                    Colors.red,
+                    () {
+                      Navigator.pop(context); // Kembali ke login
+                    },
+                  ),
                 ],
               ),
             ),
@@ -57,21 +86,36 @@ class DashboardAdminPage extends StatelessWidget {
     );
   }
 
-  Widget _buildMenuCard(BuildContext context, IconData icon, String title, Color color, VoidCallback onTap) {
+  Widget _buildMenuCard(
+    BuildContext context,
+    IconData icon,
+    String title,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 40, color: color),
             const SizedBox(height: 10),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
           ],
         ),
       ),

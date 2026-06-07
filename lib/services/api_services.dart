@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../constant/api_constants.dart';
 
 class ApiService {
-  // IP Jaringan Wi-Fi Laptop untuk sinkronisasi ke HP Fisik
-  final String baseUrl = "http://10.28.77.236:8080/api";
+  final String baseUrl = ApiConstants.baseUrl;
 
   // ==========================================
   // 1. AUTHENTICATION: LOGIN
@@ -120,6 +120,168 @@ class ApiService {
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
       print("Error Delete Hotel API: $e");
+      return false;
+    }
+  }
+
+  // ==========================================
+  // 7. GET CRITERIAS
+  // ==========================================
+  Future<List<dynamic>> getCriterias() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/criterias'));
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded is Map && decoded.containsKey('data')) {
+          return decoded['data'] ?? [];
+        } else if (decoded is List) {
+          return decoded;
+        }
+        return [];
+      }
+      return [];
+    } catch (e) {
+      print("Error Get Criterias API: $e");
+      return [];
+    }
+  }
+
+  // ==========================================
+  // 8. GET POI
+  // ==========================================
+  Future<List<dynamic>> getPoi() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/poi'));
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded is Map && decoded.containsKey('data')) {
+          return decoded['data'] ?? [];
+        } else if (decoded is List) {
+          return decoded;
+        }
+        return [];
+      }
+      return [];
+    } catch (e) {
+      print("Error Get POI API: $e");
+      return [];
+    }
+  }
+
+  // ==========================================
+  // 9. EVALUATION: KALKULASI MABAC
+  // ==========================================
+  Future<List<dynamic>> calculateMabac({
+    required List<int> hotelIds,
+    required int poiId,
+    required Map<String, double> weights, // {'C1': 25.0, 'C2': 20.0, ...}
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/evaluation/calculate'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'hotel_ids': hotelIds,
+          'poi_id':    poiId,
+          'weights':   weights,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded is Map && decoded.containsKey('data')) {
+          return decoded['data'] ?? [];
+        }
+        return [];
+      }
+      print("Kalkulasi gagal: ${response.statusCode} ${response.body}");
+      return [];
+    } catch (e) {
+      print("Error Calculate MABAC API: $e");
+      return [];
+    }
+  }
+
+  // ==========================================
+  // 10. GET HOTELS WITH DISTANCE TO POI
+  // ==========================================
+  Future<List<dynamic>> getHotelsWithFilter({
+    String? query,
+    double? minPrice,
+    double? maxPrice,
+    double? minRating,
+    bool? hasDiscount,
+    String? type,
+    String sort = 'rating_desc',
+  }) async {
+    try {
+      final params = <String, String>{};
+      if (query != null && query.isNotEmpty) params['q'] = query;
+      if (minPrice != null) params['min_price'] = minPrice.toString();
+      if (maxPrice != null) params['max_price'] = maxPrice.toString();
+      if (minRating != null) params['min_rating'] = minRating.toString();
+      if (hasDiscount == true) params['min_discount'] = '1';
+      if (type != null) params['type'] = type;
+      params['sort'] = sort;
+
+      final uri = Uri.parse('$baseUrl/hotels').replace(queryParameters: params);
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded is Map && decoded.containsKey('data')) {
+          return decoded['data'] ?? [];
+        } else if (decoded is List) {
+          return decoded;
+        }
+        return [];
+      }
+      return [];
+    } catch (e) {
+      print("Error Get Hotels With Filter API: $e");
+      return [];
+    }
+  }
+
+  Future<bool> addPoi(Map<String, String> data) async {
+    try {
+      final response = await http.post(Uri.parse('$baseUrl/poi'), body: data);
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print("Error Add POI: $e");
+      return false;
+    }
+  }
+
+Future<bool> updatePoi(int id, Map<String, String> data) async {
+  try {
+    final response = await http.put(Uri.parse('$baseUrl/poi/$id'), body: data);
+    return response.statusCode == 200;
+  } catch (e) {
+    print("Error Update POI: $e");
+    return false;
+  }
+}
+
+  Future<bool> deletePoi(int id) async {
+    try {
+      final response = await http.delete(Uri.parse('$baseUrl/poi/$id'));
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      print("Error Delete POI: $e");
+      return false;
+    }
+  }
+
+  Future<bool> updateCriteria(int id, Map<String, String> data) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/criterias/$id'),
+        body: data,
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error Update Criteria: $e");
       return false;
     }
   }
