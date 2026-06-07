@@ -5,6 +5,15 @@ import '../../services/api_services.dart';
 import '../auth/login_page.dart';
 import 'evaluation_page.dart';
 
+class DashboardUserPage extends StatefulWidget {
+  final bool isGuest;
+
+  const DashboardUserPage({super.key, this.isGuest = false});
+
+  @override
+  State<DashboardUserPage> createState() => DashboardUserPageState();
+}
+
 class DashboardUserPageState extends State<DashboardUserPage> {
   int _selectedIndex = 0;
   late final List<Widget> _pages;
@@ -13,9 +22,9 @@ class DashboardUserPageState extends State<DashboardUserPage> {
   void initState() {
     super.initState();
     _pages = [
-      const UserHomeTab(),         // Tab 1: Home (Traveloka List & Map + Filter)
-      const EvaluationPage(),      // Tab 2: Rekomendasi MABAC DSS (Real Screen)
-      const UserPoiMapTab(),       // Tab 3: Wisata POI (Interactive Map + Search)
+      UserHomeTab(isGuest: widget.isGuest),
+      const EvaluationPage(),
+      const UserPoiMapTab(),
     ];
   }
 
@@ -29,6 +38,26 @@ class DashboardUserPageState extends State<DashboardUserPage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (int index) {
+          if (index == 1 && widget.isGuest) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Akses Ditolak! Fitur Perhitungan DSS Terkunci untuk Guest. Silakan Sign In."),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 3),
+              ),
+            );
+            return;
+          }
+          if (index == 2 && widget.isGuest) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Akses Ditolak! Fitur Peta Wisata Terkunci untuk Guest. Silakan Sign In."),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 3),
+              ),
+            );
+            return;
+          }
           setState(() {
             _selectedIndex = index;
           });
@@ -55,18 +84,12 @@ class DashboardUserPageState extends State<DashboardUserPage> {
   }
 }
 
-class DashboardUserPage extends StatefulWidget {
-  const DashboardUserPage({super.key});
-
-  @override
-  State<DashboardUserPage> createState() => DashboardUserPageState();
-}
-
 // =========================================================================
-// TAB 1: USER HOME - MENAMPILKAN HOTEL DENGAN STYLE TRAVELOKA + FILTER + MAP
+// TAB 1: USER HOME - MENAMPILKAN HOTEL DENGAN GAMBAR DINAMIS API
 // =========================================================================
 class UserHomeTab extends StatefulWidget {
-  const UserHomeTab({super.key});
+  final bool isGuest; 
+  const UserHomeTab({super.key, required this.isGuest});
 
   @override
   State<UserHomeTab> createState() => _UserHomeTabState();
@@ -76,7 +99,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
   final ApiService _apiService = ApiService();
   final MapController _mapController = MapController();
 
-  // Filters State
   String _searchQuery = '';
   double? _minPrice;
   double? _maxPrice;
@@ -85,18 +107,13 @@ class _UserHomeTabState extends State<UserHomeTab> {
   String? _selectedType;
   String _sortOrder = 'rating_desc';
 
-  // Toggle View Mode: true = List, false = Map
   bool _isListView = true;
-
-  // Controllers
   final TextEditingController _searchController = TextEditingController();
 
-  // Data
   List<dynamic> _hotels = [];
   List<dynamic> _pois = [];
   bool _isLoading = true;
 
-  // Popup state for map
   Map<String, dynamic>? _selectedMapHotel;
 
   @override
@@ -194,12 +211,10 @@ class _UserHomeTabState extends State<UserHomeTab> {
                 ),
                 const Divider(),
                 const SizedBox(height: 12),
-
-                // URUTKAN
                 const Text("Urutkan Berdasarkan", style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  initialValue: localSort,
+                  value: localSort,
                   decoration: InputDecoration(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -216,8 +231,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
                   },
                 ),
                 const SizedBox(height: 16),
-
-                // HARGA
                 const Text("Kisaran Harga per Malam", style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Row(
@@ -246,8 +259,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
                   ],
                 ),
                 const SizedBox(height: 16),
-
-                // RATING SLIDER
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -267,8 +278,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
                   onChanged: (val) => setModalState(() => localRating = val),
                 ),
                 const SizedBox(height: 12),
-
-                // TIPE AKOMODASI
                 const Text("Tipe Akomodasi", style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Wrap(
@@ -293,8 +302,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
                   }).toList(),
                 ),
                 const SizedBox(height: 16),
-
-                // PROMO DISKON
                 SwitchListTile(
                   title: const Text("Tampilkan diskon saja", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   value: localDiscount,
@@ -303,8 +310,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
                   onChanged: (val) => setModalState(() => localDiscount = val),
                 ),
                 const SizedBox(height: 20),
-
-                // APPLY BUTTON
                 SizedBox(
                   width: double.infinity,
                   height: 52,
@@ -346,15 +351,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
     );
   }
 
-  // List of placeholder images for premium hotel look
-  static const List<String> _hotelImages = [
-    'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=500&auto=format&fit=crop&q=60',
-    'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=500&auto=format&fit=crop&q=60',
-    'https://images.unsplash.com/photo-1540541338287-41700207dee6?w=500&auto=format&fit=crop&q=60',
-    'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?w=500&auto=format&fit=crop&q=60',
-    'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=500&auto=format&fit=crop&q=60',
-  ];
-
   @override
   Widget build(BuildContext context) {
     const Color travelokaBlue = Color(0xFF0194F3);
@@ -364,7 +360,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
       body: SafeArea(
         child: Column(
           children: [
-            // Traveloka-style blue header
             Container(
               color: travelokaBlue,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -381,8 +376,12 @@ class _UserHomeTabState extends State<UserHomeTab> {
                             style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 0.5),
                           ),
                           Text(
-                            "Traveloka UI • Web connected",
-                            style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11),
+                            widget.isGuest ? "Mode Guest • Fitur DSS Terkunci" : "Traveloka UI • Web connected",
+                            style: TextStyle(
+                              color: widget.isGuest ? Colors.amberAccent : Colors.white.withOpacity(0.8), 
+                              fontSize: 11,
+                              fontWeight: widget.isGuest ? FontWeight.bold : FontWeight.normal,
+                            ),
                           )
                         ],
                       ),
@@ -399,8 +398,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
                     ],
                   ),
                   const SizedBox(height: 14),
-
-                  // Search Bar
                   Row(
                     children: [
                       Expanded(
@@ -437,8 +434,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
                         ),
                       ),
                       const SizedBox(width: 8),
-
-                      // Toggle Map/List Button
                       Container(
                         width: 48,
                         height: 48,
@@ -457,8 +452,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
                     ],
                   ),
                   const SizedBox(height: 8),
-
-                  // Quick Action Buttons
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -491,8 +484,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
                 ],
               ),
             ),
-
-            // Main Content Area
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -518,8 +509,7 @@ class _UserHomeTabState extends State<UserHomeTab> {
     );
   }
 
-  // ── USER HOME: LIST VIEW STYLE ──────────────────────────────────────────────
-  Widget _buildListView() {
+ Widget _buildListView() {
     const Color travelokaBlue = Color(0xFF0194F3);
 
     return ListView.builder(
@@ -527,195 +517,148 @@ class _UserHomeTabState extends State<UserHomeTab> {
       itemCount: _hotels.length,
       itemBuilder: (context, index) {
         final h = _hotels[index];
-        final type = h['type']?.toString().toUpperCase() ?? 'HOTEL';
-        final discount = int.tryParse(h['discount']?.toString() ?? '0') ?? 0;
         final rating = double.tryParse(h['rating']?.toString() ?? '0.0') ?? 0.0;
         final facilitiesCount = int.tryParse(h['facilities_count']?.toString() ?? '0') ?? 0;
         final avgDistance = h['avg_distance'] != null ? double.tryParse(h['avg_distance'].toString()) : null;
-
-        // Pick photo from list based on index
-        final photo = _hotelImages[index % _hotelImages.length];
 
         return Card(
           color: Colors.white,
           elevation: 0,
           margin: const EdgeInsets.only(bottom: 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12), // Border radius yang rapi
             side: BorderSide(color: Colors.grey.shade200, width: 1),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Photo Header + Discount Badge
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                    child: Image.network(
-                      photo,
-                      height: 150,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        height: 150,
-                        color: Colors.grey.shade200,
-                        child: const Icon(Icons.hotel, size: 50, color: Colors.grey),
-                      ),
-                    ),
-                  ),
-                  if (discount > 0)
-                    Positioned(
-                      top: 12,
-                      left: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF6D00), // Orange badge
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          "$discount% OFF",
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
-                        ),
-                      ),
-                    ),
-                  Positioned(
-                    top: 12,
-                    right: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. NAMA HOTEL
+                Text(
+                  h['name'] ?? '',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black87),
+                ),
+                const SizedBox(height: 6),
+
+                // 2. DETAIL FASILITAS SINGKAT
+                Text(
+                  h['facilities_detail'] ?? '',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 12),
+
+                // 3. BARIS RATING & JUMLAH FASILITAS
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
-                        borderRadius: BorderRadius.circular(8),
+                        color: const Color(0xFFEAF7FF),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        type,
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        rating.toStringAsFixed(1),
+                        style: const TextStyle(color: travelokaBlue, fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                     ),
-                  ),
-                ],
-              ),
-
-              // Card details
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      h['name'] ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black87),
+                    const SizedBox(width: 8),
+                    const Text(
+                      "Skor review pengguna",
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                     ),
-                    const SizedBox(height: 6),
+                    const Spacer(),
                     Text(
-                      h['facilities_detail'] ?? '',
+                      "$facilitiesCount fasilitas",
                       style: const TextStyle(color: Colors.grey, fontSize: 12),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEAF7FF),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            rating.toStringAsFixed(1),
-                            style: const TextStyle(color: travelokaBlue, fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          "Skor review pengguna",
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                        ),
-                        const Spacer(),
-                        Text(
-                          "$facilitiesCount fasilitas",
-                          style: const TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                    if (avgDistance != null) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.place_outlined, color: Colors.grey, size: 14),
-                          const SizedBox(width: 4),
-                          Text(
-                            "${avgDistance.toStringAsFixed(1)} km rata-rata jarak ke POI",
-                            style: const TextStyle(color: Colors.grey, fontSize: 11),
-                          ),
-                        ],
-                      )
-                    ],
-                    const Divider(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text("Mulai dari", style: TextStyle(color: Colors.grey, fontSize: 11)),
-                            Text(
-                              "Rp ${_formatPrice(h['price'])}",
-                              style: const TextStyle(color: travelokaBlue, fontWeight: FontWeight.bold, fontSize: 18),
-                            ),
-                            const Text("per malam", style: TextStyle(color: Colors.grey, fontSize: 10)),
-                          ],
-                        ),
-                        ElevatedButton(
-                          onPressed: () {
-                            // Sinyal sukses membandingkan, arahkan user ke tab Rekomendasi (Tab index 1)
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text("Menambahkan ${h['name']} ke DSS. Buka tab Rekomendasi untuk mulai."),
-                                action: SnackBarAction(
-                                  label: "Buka",
-                                  textColor: Colors.white,
-                                  onPressed: () {
-                                    final parentState = context.findAncestorStateOfType<DashboardUserPageState>();
-                                    parentState?.setState(() {
-                                      parentState._selectedIndex = 1;
-                                    });
-                                  },
-                                ),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: travelokaBlue,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            elevation: 0,
-                          ),
-                          child: const Text("Bandingkan (DSS)"),
-                        )
-                      ],
-                    )
                   ],
                 ),
-              )
-            ],
+
+                // 4. JARAK KE POI (JIKA ADA)
+                if (avgDistance != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.place_outlined, color: Colors.grey, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        "${avgDistance.toStringAsFixed(1)} km rata-rata jarak ke POI",
+                        style: const TextStyle(color: Colors.grey, fontSize: 11),
+                      ),
+                    ],
+                  )
+                ],
+                
+                const Divider(height: 24),
+
+                // 5. BARIS HARGA & TOMBOL DSS
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("Mulai dari", style: TextStyle(color: Colors.grey, fontSize: 11)),
+                        Text(
+                          "Rp ${_formatPrice(h['price'])}",
+                          style: const TextStyle(color: travelokaBlue, fontWeight: FontWeight.bold, fontSize: 18),
+                        ),
+                        const Text("per malam", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                      ],
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        if (widget.isGuest) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Fitur DSS Terkunci! Silakan daftarkan akun / login terlebih dahulu."),
+                              backgroundColor: Colors.red,
+                              duration: Duration(seconds: 3),
+                            ),
+                          );
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("Menambahkan ${h['name']} ke DSS. Buka tab Rekomendasi untuk mulai."),
+                            action: SnackBarAction(
+                              label: "Buka",
+                              textColor: Colors.white,
+                              onPressed: () {
+                                final parentState = context.findAncestorStateOfType<DashboardUserPageState>();
+                                parentState?.setState(() {
+                                  parentState._selectedIndex = 1;
+                                });
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: widget.isGuest ? Colors.grey : travelokaBlue,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
+                      ),
+                      child: const Text("Bandingkan (DSS)"),
+                    )
+                  ],
+                )
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  // ── USER HOME: MAP VIEW STYLE ──────────────────────────────────────────────
   Widget _buildMapView() {
     const Color travelokaBlue = Color(0xFF0194F3);
-
-    // Create markers list
     final List<Marker> markers = [];
 
-    // Add hotels markers (custom price-tag design)
     for (var h in _hotels) {
       final lat = double.tryParse(h['latitude']?.toString() ?? '');
       final lng = double.tryParse(h['longitude']?.toString() ?? '');
@@ -741,11 +684,7 @@ class _UserHomeTabState extends State<UserHomeTab> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.white, width: 1.5),
                   boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    )
+                    BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6, offset: const Offset(0, 2))
                   ],
                 ),
                 child: Center(
@@ -768,7 +707,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
       }
     }
 
-    // Add POIs markers (amber location-pins)
     for (var poi in _pois) {
       final lat = double.tryParse(poi['latitude']?.toString() ?? '');
       final lng = double.tryParse(poi['longitude']?.toString() ?? '');
@@ -799,19 +737,14 @@ class _UserHomeTabState extends State<UserHomeTab> {
                   ),
                 );
               },
-              child: const Icon(
-                Icons.camera_alt_rounded,
-                color: Color(0xFFFF6D00), // Traveloka Orange
-                size: 24,
-              ),
+              child: const Icon(Icons.camera_alt_rounded, color: Color(0xFFFF6D00), size: 24),
             ),
           ),
         );
       }
     }
 
-    // Determine initial center
-    LatLng initialCenter = const LatLng(-8.65, 115.2); // Denpasar area
+    LatLng initialCenter = const LatLng(-8.65, 115.2);
     if (markers.isNotEmpty) {
       initialCenter = markers.first.point;
     }
@@ -832,8 +765,6 @@ class _UserHomeTabState extends State<UserHomeTab> {
             MarkerLayer(markers: markers),
           ],
         ),
-
-        // Floating info banner explaining markers color
         Positioned(
           top: 12,
           left: 12,
@@ -845,29 +776,30 @@ class _UserHomeTabState extends State<UserHomeTab> {
               borderRadius: BorderRadius.circular(10),
               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6)],
             ),
-            child: Row(
+            child: const Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 Row(
                   children: [
-                    Container(width: 12, height: 12, decoration: BoxDecoration(color: travelokaBlue, borderRadius: BorderRadius.circular(3))),
-                    const SizedBox(width: 6),
-                    const Text("Hotel (Skor & Harga)", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    ColorFiltered(
+                      colorFilter: ColorFilter.mode(travelokaBlue, BlendMode.srcIn),
+                      child: Icon(Icons.square, size: 12),
+                    ),
+                    SizedBox(width: 6),
+                    Text("Hotel (Skor & Harga)", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 Row(
                   children: [
-                    const Icon(Icons.camera_alt_rounded, color: Color(0xFFFF6D00), size: 14),
-                    const SizedBox(width: 4),
-                    const Text("Tempat Wisata (POI)", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    Icon(Icons.camera_alt_rounded, color: Color(0xFFFF6D00), size: 14),
+                    SizedBox(width: 4),
+                    Text("Tempat Wisata (POI)", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ],
             ),
           ),
         ),
-
-        // Pop up details for clicked hotel marker
         if (_selectedMapHotel != null)
           Positioned(
             bottom: 16,
@@ -927,13 +859,22 @@ class _UserHomeTabState extends State<UserHomeTab> {
                       children: [
                         ElevatedButton(
                           onPressed: () {
+                            if (widget.isGuest) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Fitur DSS Terkunci untuk Guest!"),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              return;
+                            }
                             final parentState = context.findAncestorStateOfType<DashboardUserPageState>();
                             parentState?.setState(() {
                               parentState._selectedIndex = 1;
                             });
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: travelokaBlue,
+                            backgroundColor: widget.isGuest ? Colors.grey : travelokaBlue,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                             minimumSize: Size.zero,
@@ -1011,7 +952,6 @@ class _UserPoiMapTabState extends State<UserPoiMapTab> {
   Widget build(BuildContext context) {
     const Color travelokaBlue = Color(0xFF0194F3);
 
-    // Build markers
     final List<Marker> markers = _pois.map((poi) {
       final lat = double.tryParse(poi['latitude']?.toString() ?? '0.0') ?? 0.0;
       final lng = double.tryParse(poi['longitude']?.toString() ?? '0.0') ?? 0.0;
@@ -1030,16 +970,11 @@ class _UserPoiMapTabState extends State<UserPoiMapTab> {
               ),
             );
           },
-          child: const Icon(
-            Icons.camera_alt_rounded,
-            color: Color(0xFFFF6D00),
-            size: 26,
-          ),
+          child: const Icon(Icons.camera_alt_rounded, color: Color(0xFFFF6D00), size: 26),
         ),
       );
     }).toList();
 
-    // Default center Denpasar
     LatLng defaultCenter = const LatLng(-8.65, 115.2);
     if (_pois.isNotEmpty) {
       final lat = double.tryParse(_pois.first['latitude']?.toString() ?? '') ?? -8.65;
@@ -1059,7 +994,6 @@ class _UserPoiMapTabState extends State<UserPoiMapTab> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // POI Map area (Interactive Leaflet equivalent)
                 Expanded(
                   flex: 3,
                   child: Stack(
@@ -1096,8 +1030,6 @@ class _UserPoiMapTabState extends State<UserPoiMapTab> {
                     ],
                   ),
                 ),
-
-                // POI Search Sidebar/Bottom panel
                 Expanded(
                   flex: 2,
                   child: Container(
@@ -1110,7 +1042,6 @@ class _UserPoiMapTabState extends State<UserPoiMapTab> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Search Form
                           Container(
                             height: 45,
                             decoration: BoxDecoration(
@@ -1152,7 +1083,10 @@ class _UserPoiMapTabState extends State<UserPoiMapTab> {
                                             child: Icon(Icons.camera_alt_rounded, color: Color(0xFFFF6D00), size: 18),
                                           ),
                                           title: Text(poi['nama_poi'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                          subtitle: Text("Lat: ${lat.toStringAsFixed(4)}, Lng: ${lng.toStringAsFixed(4)}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                          subtitle: Text(
+                                            "Lat: ${lat.toStringAsFixed(4)}, Lng: ${lng.toStringAsFixed(4)}",
+                                            style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                          ),
                                           trailing: const Icon(Icons.gps_fixed_rounded, color: travelokaBlue, size: 18),
                                           onTap: () {
                                             _mapController.move(LatLng(lat, lng), 15);

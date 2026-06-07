@@ -11,7 +11,6 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  // Status penentu: true = Tampilan Login, false = Tampilan Register
   bool _isLoginView = true;
 
   // Controller Input Form
@@ -22,7 +21,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _isObscure = true;
 
   // ==========================================
-  // 1. LOGIKA PROSES LOGIN (KONEKSI API)
+  // LOGIKA PROSES LOGIN (KONEKSI API)
   // ==========================================
   void _handleLogin() async {
     String email = _emailController.text.trim();
@@ -38,6 +37,7 @@ class _LoginPageState extends State<LoginPage> {
     final ApiService apiService = ApiService();
     var response = await apiService.login(email, password);
 
+    if (!mounted) return;
     Navigator.pop(context); // Tutup loading dialog
 
     if (response != null && response['status'] == 200) {
@@ -53,9 +53,12 @@ class _LoginPageState extends State<LoginPage> {
           MaterialPageRoute(builder: (context) => const DashboardAdminPage()),
         );
       } else {
+        // DI SINI DIEDIT: Kirimkan isGuest: false karena ini adalah user resmi yang berhasil login
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const DashboardUserPage()),
+          MaterialPageRoute(
+            builder: (context) => const DashboardUserPage(isGuest: false),
+          ),
         );
       }
     } else {
@@ -64,7 +67,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // ==========================================
-  // 2. LOGIKA PROSES REGISTER (KONEKSI API)
+  // LOGIKA PROSES REGISTER (KONEKSI API)
   // ==========================================
   void _handleRegister() async {
     String name = _nameController.text.trim();
@@ -81,12 +84,12 @@ class _LoginPageState extends State<LoginPage> {
     final ApiService apiService = ApiService();
     var response = await apiService.register(name, email, password);
 
+    if (!mounted) return;
     Navigator.pop(context); // Tutup loading dialog
 
     if (response != null && response['status'] == 201) {
       _showSnackBar("Pendaftaran Berhasil! Silakan masuk.", Colors.green);
       
-      // Bersihkan form dan kembalikan tampilan ke form Login
       setState(() {
         _nameController.clear();
         _passwordController.clear();
@@ -98,9 +101,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ==========================================
-  // HELPER WIDGETS (LOADING & SNACKBAR)
-  // ==========================================
   void _showLoadingDialog() {
     showDialog(
       context: context,
@@ -115,119 +115,237 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ==========================================
-  // UI LAYOUT (KEDUA FORM DISATUKAN DI SINI)
-  // ==========================================
   @override
   Widget build(BuildContext context) {
+    final double screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ANIMASI TOGGLE JUDUL UTAMA
-                Text(
-                  _isLoginView ? "Welcome Back" : "Create Account",
-                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black87),
-                ),
-                Text(
-                  _isLoginView ? "Sign in to continue your session" : "Sign up to get started with BaliStay",
-                  style: const TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-                const SizedBox(height: 40),
-
-                // FIELD NAMA (Hanya muncul jika sedang di halaman REGISTER)
-                if (!_isLoginView) ...[
-                  TextField(
-                    controller: _nameController,
-                    decoration: _inputDecoration('Full Name', Icons.person_outline_rounded),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                // FIELD EMAIL (Selalu Muncul)
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: _inputDecoration('Email Address', Icons.email_outlined),
-                ),
-                const SizedBox(height: 16),
-
-                // FIELD PASSWORD (Selalu Muncul)
-                TextField(
-                  controller: _passwordController,
-                  obscureText: _isObscure,
-                  decoration: _inputDecoration('Password', Icons.lock_outline_rounded).copyWith(
-                    suffixIcon: IconButton(
-                      icon: Icon(_isObscure ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
-                      onPressed: () => setState(() => _isObscure = !_isObscure),
+      body: SingleChildScrollView(
+        child: SizedBox(
+          height: screenHeight,
+          child: Stack(
+            children: [
+              // 1. BACKGROUND LENGKUNGAN UNGU/BIRU GRADASI (Sesuai one.jpg)
+              ClipPath(
+                clipper: CurveClipper(),
+                child: Container(
+                  height: screenHeight * 0.48,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFF6B73FF), // Ungu Cerah Atas
+                        Color(0xFF000DFF), // Biru Ungu Pekat Bawah
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 30),
-
-                // TOMBOL UTAMA (Bisa berubah fungsi berdasarkan state tampilan)
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: _isLoginView ? _handleLogin : _handleRegister,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0194F3),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      _isLoginView ? "Sign In" : "Sign Up",
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // TOMBOL TOGGLE UNTUK SAKLAR PINDAH HALAMAN (LOGIN <-> REGISTER)
-                Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _isLoginView = !_isLoginView;
-                      });
-                    },
-                    child: RichText(
-                      text: TextSpan(
-                        text: _isLoginView ? "Don't have an account? " : "Already have an account? ",
-                        style: const TextStyle(color: Colors.grey, fontSize: 14),
-                        children: [
-                          TextSpan(
-                            text: _isLoginView ? "Sign Up" : "Sign In",
-                            style: const TextStyle(color: Color(0xFF0194F3), fontWeight: FontWeight.bold),
-                          ),
-                        ],
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 40.0),
+                      child: Text(
+                        _isLoginView ? "Login" : "Register",
+                        style: const TextStyle(
+                          fontSize: 42,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 1.2,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+
+              // 2. KONTEN INPUT FORM MENGAMBANG DI ATAS CARD PUTIH SOFT
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 30.0),
+                child: Column(
+                  children: [
+                    SizedBox(height: screenHeight * 0.38), // Mengatur posisi vertical form
+                    
+                    // Card Wadah Form dengan Shadow Lembut
+                    Container(
+                      padding: const EdgeInsets.all(24.0),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(22),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.06),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          // Field Nama (Hanya Muncul Saat Register)
+                          if (!_isLoginView) ...[
+                            TextField(
+                              controller: _nameController,
+                              decoration: _inputDecoration("Full Name"),
+                            ),
+                            const SizedBox(height: 18),
+                          ],
+
+                          // Field Email
+                          TextField(
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: _inputDecoration("Email or Phone number"),
+                          ),
+                          const SizedBox(height: 18),
+
+                          // Field Password
+                          TextField(
+                            controller: _passwordController,
+                            obscureText: _isObscure,
+                            decoration: _inputDecoration("Password").copyWith(
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _isObscure ? Icons.visibility_off : Icons.visibility,
+                                  color: Colors.grey[400],
+                                ),
+                                onPressed: () => setState(() => _isObscure = !_isObscure),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 35),
+
+                    // 3. TOMBOL UTAMA GRADASI UNGU ELEGAN
+                    Container(
+                      width: double.infinity,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF8E94F2),
+                            Color(0xFF6B73FF),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF6B73FF).withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          )
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: _isLoginView ? _handleLogin : _handleRegister,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: Text(
+                          _isLoginView ? "Login" : "Register",
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // 4. TOMBOL TAMBAHAN: GUEST MODE (Hanya Tampil Saat Login View)
+                   if (_isLoginView) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: () {
+                            // Mengirimkan data 'isGuest: true' ke halaman DashboardUserPage
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const DashboardUserPage(isGuest: true),
+                              ),
+                            );
+                          },
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: Colors.grey[300]!, width: 1.2),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: const Text(
+                            "Continue as Guest",
+                            style: TextStyle(fontSize: 15, color: Color(0xFF6B73FF), fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const Spacer(),
+
+                    // 5. TOMBOL SAKLAR PINDAH HALAMAN (MENGGANTIKAN FORGOT PASSWORD)
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _isLoginView = !_isLoginView;
+                        });
+                      },
+                      child: Text(
+                        _isLoginView ? "Don't have an account? Sign Up" : "Already have an account? Sign In",
+                        style: const TextStyle(
+                          color: Color(0xFF8E94F2),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  InputDecoration _inputDecoration(String hint, IconData icon) {
+  InputDecoration _inputDecoration(String labelText) {
     return InputDecoration(
-      hintText: hint,
-      filled: true,
-      fillColor: const Color(0xFFF5F7FA),
-      prefixIcon: Icon(icon, color: Colors.grey),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      labelText: labelText,
+      labelStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+      floatingLabelStyle: const TextStyle(color: Color(0xFF6B73FF)),
+      contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+      enabledBorder: UnderlineInputBorder(
+        borderSide: BorderSide(color: Colors.grey[200]!, width: 1.5),
+      ),
+      focusedBorder: const UnderlineInputBorder(
+        borderSide: BorderSide(color: Color(0xFF6B73FF), width: 2),
+      ),
     );
   }
+}
+
+// ===========================================================================
+// CUSTOM CLIPPER UNTUK MEMBENTUK KURVA GELOMBANG LEMBUT (WARNA UNGU ATAS)
+// ===========================================================================
+class CurveClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    Path path = Path();
+    path.lineTo(0, size.height * 0.75);
+
+    // Titik kontrol lengkungan bawah ombak
+    var firstControlPoint = Offset(size.width * 0.25, size.height * 0.70);
+    var firstEndPoint = Offset(size.width * 0.5, size.height * 0.82);
+    path.quadraticBezierTo(firstControlPoint.dx, firstControlPoint.dy, firstEndPoint.dx, firstEndPoint.dy);
+
+    var secondControlPoint = Offset(size.width * 0.75, size.height * 0.94);
+    var secondEndPoint = Offset(size.width, size.height * 0.88);
+    path.quadraticBezierTo(secondControlPoint.dx, secondControlPoint.dy, secondEndPoint.dx, secondEndPoint.dy);
+
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
