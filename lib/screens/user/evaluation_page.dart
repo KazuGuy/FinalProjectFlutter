@@ -12,16 +12,19 @@ class _EvaluationPageState extends State<EvaluationPage> {
   final ApiService _api = ApiService();
 
   // State
-  int _step = 1; // 1: pilih hotel, 2: pilih POI & bobot, 3: hasil
-  List<dynamic> _hotels = [];
-  List<dynamic> _pois = [];
+  int _step = 1;
+  List<dynamic> _hotels    = [];
+  List<dynamic> _pois      = [];
   List<dynamic> _criterias = [];
-  List<dynamic> _results = [];
+  List<dynamic> _results   = [];
 
   // Pilihan user
   final Set<int> _selectedHotelIds = {};
   int? _selectedPoiId;
   final Map<String, double> _weights = {};
+
+  // FIX: Controllers disimpan di Map agar tidak di-recreate setiap build
+  final Map<String, TextEditingController> _controllers = {};
 
   bool _isLoading = true;
 
@@ -31,27 +34,55 @@ class _EvaluationPageState extends State<EvaluationPage> {
     _loadData();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    final hotels    = await _api.getHotels();
-    final pois      = await _api.getPoi();
-    final criterias = await _api.getCriterias();
-
-    // Set bobot default dari DB
-    for (var c in criterias) {
-      _weights[c['code']] = double.parse(c['default_weight'].toString());
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
     }
-
-    setState(() {
-      _hotels    = hotels;
-      _pois      = pois;
-      _criterias = criterias;
-      _isLoading = false;
-    });
+    super.dispose();
   }
 
+  // ── Load Data ─────────────────────────────────────────────
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final hotels    = await _api.getHotels();
+      final pois      = await _api.getPoi();
+      final criterias = await _api.getCriterias();
+
+      // Null-safe: pastikan semua adalah List
+      final safeHotels    = hotels    is List ? List<dynamic>.from(hotels)    : <dynamic>[];
+      final safePois      = pois      is List ? List<dynamic>.from(pois)      : <dynamic>[];
+      final safeCriterias = criterias is List ? List<dynamic>.from(criterias) : <dynamic>[];
+
+      // Inisialisasi bobot & controllers sekali saja
+      for (final c in safeCriterias) {
+        if (c == null) continue;
+        final code   = c['code']?.toString() ?? '';
+        if (code.isEmpty) continue;
+        final weight = double.tryParse(c['default_weight']?.toString() ?? '0') ?? 0.0;
+        _weights[code] = weight;
+        _controllers[code] = TextEditingController(text: weight.toStringAsFixed(0));
+      }
+
+      setState(() {
+        _hotels    = safeHotels;
+        _pois      = safePois;
+        _criterias = safeCriterias;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        _showSnackBar('Gagal memuat data: $e', Colors.red);
+      }
+    }
+  }
+
+  // ── Calculate ─────────────────────────────────────────────
   Future<void> _calculate() async {
-    // Validasi total bobot = 100
+    if (_selectedHotelIds.isEmpty || _selectedPoiId == null) return;
+
     final total = _weights.values.fold(0.0, (a, b) => a + b);
     if ((total - 100).abs() > 0.01) {
       _showSnackBar('Total bobot harus 100%. Sekarang: ${total.toStringAsFixed(1)}%', Colors.orange);
@@ -59,23 +90,32 @@ class _EvaluationPageState extends State<EvaluationPage> {
     }
 
     setState(() => _isLoading = true);
-
-    final results = await _api.calculateMabac(
-      hotelIds: _selectedHotelIds.toList(),
-      poiId:    _selectedPoiId!,
-      weights:  _weights,
-    );
-
-    setState(() {
-      _results  = results;
-      _step     = 3;
-      _isLoading = false;
-    });
+    try {
+      final data = await _api.calculateMabac(
+        hotelIds: _selectedHotelIds.toList(),
+        poiId:    _selectedPoiId!,
+        weights:  _weights,
+      );
+      setState(() {
+        _results   = data is List ? List<dynamic>.from(data) : [];
+        _step      = 3;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        _showSnackBar('Gagal menghitung MABAC: $e', Colors.red);
+      }
+    }
   }
 
   void _showSnackBar(String msg, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: color, duration: const Duration(seconds: 2)),
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: color,
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
 
@@ -84,34 +124,39 @@ class _EvaluationPageState extends State<EvaluationPage> {
       _step = 1;
       _selectedHotelIds.clear();
       _selectedPoiId = null;
-      _results = [];
-      for (var c in _criterias) {
-        _weights[c['code']] = double.parse(c['default_weight'].toString());
+      _results       = [];
+      for (final c in _criterias) {
+        if (c == null) continue;
+        final code   = c['code']?.toString() ?? '';
+        if (code.isEmpty) continue;
+        final weight = double.tryParse(c['default_weight']?.toString() ?? '0') ?? 0.0;
+        _weights[code] = weight;
+        _controllers[code]?.text = weight.toStringAsFixed(0);
       }
     });
   }
 
+  // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
+    // FIX: Loading ada di dalam Column, bukan menggantikan seluruh widget tree
     return Column(
       children: [
         _buildStepper(),
         Expanded(
-          child: _step == 1
-              ? _buildStep1()
-              : _step == 2
-                  ? _buildStep2()
-                  : _buildStep3(),
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _step == 1
+                  ? _buildStep1()
+                  : _step == 2
+                      ? _buildStep2()
+                      : _buildStep3(),
         ),
       ],
     );
   }
 
-  // ── Stepper ──────────────────────────────────────────────
+  // ── Stepper ───────────────────────────────────────────────
   Widget _buildStepper() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -133,9 +178,14 @@ class _EvaluationPageState extends State<EvaluationPage> {
                           : Colors.grey.shade300,
                   child: done
                       ? const Icon(Icons.check, size: 16, color: Colors.white)
-                      : Text('$num', style: TextStyle(
-                          color: active ? Colors.white : Colors.grey,
-                          fontSize: 12, fontWeight: FontWeight.bold)),
+                      : Text(
+                          '$num',
+                          style: TextStyle(
+                            color: active ? Colors.white : Colors.grey,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -147,7 +197,9 @@ class _EvaluationPageState extends State<EvaluationPage> {
                   ),
                 ),
                 if (i < 2)
-                  Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+                  Expanded(
+                    child: Divider(color: Colors.grey.shade300, thickness: 1),
+                  ),
               ],
             ),
           );
@@ -165,8 +217,9 @@ class _EvaluationPageState extends State<EvaluationPage> {
             padding: const EdgeInsets.all(16),
             itemCount: _hotels.length,
             itemBuilder: (context, index) {
-              final h       = _hotels[index];
-              final id      = int.parse(h['id'].toString());
+              final h = _hotels[index];
+              if (h == null) return const SizedBox.shrink();
+              final id      = int.tryParse(h['id']?.toString() ?? '') ?? 0;
               final checked = _selectedHotelIds.contains(id);
               return Card(
                 color: checked ? const Color(0xFFE3F2FD) : Colors.white,
@@ -191,18 +244,20 @@ class _EvaluationPageState extends State<EvaluationPage> {
                       }
                     });
                   },
-                  title: Text(h['name'] ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  title: Text(
+                    h['name']?.toString() ?? '',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 4),
                       Text(
-                        'Rp ${_formatPrice(h['price'])} / malam  ·  ⭐ ${h['rating']}',
+                        'Rp ${_formatPrice(h['price'])} / malam  ·  ⭐ ${h['rating'] ?? '-'}',
                         style: const TextStyle(fontSize: 13, color: Color(0xFF0194F3)),
                       ),
                       Text(
-                        '${h['facilities_count']} fasilitas · ${h['discount']}% diskon · ${h['type']}',
+                        '${h['facilities_count'] ?? 0} fasilitas · ${h['discount'] ?? 0}% diskon · ${h['type'] ?? '-'}',
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
@@ -224,7 +279,7 @@ class _EvaluationPageState extends State<EvaluationPage> {
 
   // ── Step 2: Pilih POI & Atur Bobot ────────────────────────
   Widget _buildStep2() {
-    final total = _weights.values.fold(0.0, (a, b) => a + b);
+    final total   = _weights.values.fold(0.0, (a, b) => a + b);
     final isValid = (total - 100).abs() < 0.01;
 
     return Column(
@@ -236,8 +291,10 @@ class _EvaluationPageState extends State<EvaluationPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // POI Selector
-                const Text('POI Acuan Jarak',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const Text(
+                  'POI Acuan Jarak',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -251,12 +308,15 @@ class _EvaluationPageState extends State<EvaluationPage> {
                       isExpanded: true,
                       hint: const Text('Pilih Point of Interest'),
                       value: _selectedPoiId,
-                      items: _pois.map((poi) {
-                        return DropdownMenuItem<int>(
-                          value: int.parse(poi['id'].toString()),
-                          child: Text(poi['nama_poi'] ?? ''),
-                        );
-                      }).toList(),
+                      items: _pois
+                          .where((poi) => poi != null)
+                          .map((poi) {
+                            return DropdownMenuItem<int>(
+                              value: int.tryParse(poi['id']?.toString() ?? '') ?? 0,
+                              child: Text(poi['nama_poi']?.toString() ?? ''),
+                            );
+                          })
+                          .toList(),
                       onChanged: (val) => setState(() => _selectedPoiId = val),
                     ),
                   ),
@@ -267,8 +327,10 @@ class _EvaluationPageState extends State<EvaluationPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Bobot Kriteria',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Text(
+                      'Bobot Kriteria',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
                     Text(
                       'Total: ${total.toStringAsFixed(1)}%',
                       style: TextStyle(
@@ -278,13 +340,19 @@ class _EvaluationPageState extends State<EvaluationPage> {
                     ),
                   ],
                 ),
-                const Text('Total harus 100%',
-                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text(
+                  'Total harus 100%',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
                 const SizedBox(height: 12),
 
+                // FIX: null-safe criteria loop, controller dari Map
                 ..._criterias.map((c) {
-                  final code = c['code'] as String;
-                  final w    = _weights[code] ?? 0.0;
+                  if (c == null) return const SizedBox.shrink();
+                  final code = c['code']?.toString() ?? '';
+                  if (code.isEmpty) return const SizedBox.shrink();
+                  final w = _weights[code] ?? 0.0;
+
                   return Container(
                     margin: const EdgeInsets.only(bottom: 16),
                     padding: const EdgeInsets.all(14),
@@ -299,12 +367,15 @@ class _EvaluationPageState extends State<EvaluationPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(c['name'] ?? code,
-                                style: const TextStyle(fontWeight: FontWeight.w600)),
+                            Text(
+                              c['name']?.toString() ?? code,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
                             Row(
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: c['type'] == 'benefit'
                                         ? Colors.green.shade50
@@ -327,21 +398,23 @@ class _EvaluationPageState extends State<EvaluationPage> {
                                   child: TextField(
                                     keyboardType: TextInputType.number,
                                     textAlign: TextAlign.center,
+                                    // FIX: pakai controller dari Map, bukan buat baru setiap build
+                                    controller: _controllers[code],
                                     decoration: InputDecoration(
                                       isDense: true,
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(color: Colors.grey.shade300),
+                                        borderSide:
+                                            BorderSide(color: Colors.grey.shade300),
                                       ),
                                       suffixText: '%',
                                     ),
-                                    controller: TextEditingController(text: w.toStringAsFixed(0))
-                                      ..selection = TextSelection.collapsed(offset: w.toStringAsFixed(0).length),
                                     onChanged: (val) {
-                                      setState(() {
-                                        _weights[code] = double.tryParse(val) ?? 0;
-                                      });
+                                      _weights[code] = double.tryParse(val) ?? 0;
+                                      // Rebuild hanya untuk update total label
+                                      setState(() {});
                                     },
                                   ),
                                 ),
@@ -358,7 +431,9 @@ class _EvaluationPageState extends State<EvaluationPage> {
           ),
         ),
         _buildBottomBar(
-          label: isValid ? 'Bobot valid ✓' : 'Total bobot: ${total.toStringAsFixed(1)}% (harus 100%)',
+          label: isValid
+              ? 'Bobot valid ✓'
+              : 'Total bobot: ${total.toStringAsFixed(1)}% (harus 100%)',
           buttonText: 'Hitung →',
           enabled: isValid && _selectedPoiId != null,
           onPressed: _calculate,
@@ -369,6 +444,51 @@ class _EvaluationPageState extends State<EvaluationPage> {
 
   // ── Step 3: Hasil ─────────────────────────────────────────
   Widget _buildStep3() {
+    if (_results.isEmpty) {
+      return Column(
+        children: [
+          const Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.info_outline, size: 48, color: Colors.grey),
+                  SizedBox(height: 12),
+                  Text(
+                    'Tidak ada hasil.',
+                    style: TextStyle(color: Colors.grey, fontSize: 16),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Cek console untuk detail response API.',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: _reset,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Evaluasi Baru'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0194F3),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       children: [
         Expanded(
@@ -377,44 +497,55 @@ class _EvaluationPageState extends State<EvaluationPage> {
             child: Column(
               children: [
                 // Winner card
-                if (_results.isNotEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF0194F3), Color(0xFF005580)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0194F3), Color(0xFF005580)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('🏆 Rekomendasi Terbaik',
-                            style: TextStyle(color: Colors.white70, fontSize: 13)),
-                        const SizedBox(height: 6),
-                        Text(
-                          _results[0]['name'] ?? '',
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Skor MABAC: ${double.parse(_results[0]['score'].toString()).toStringAsFixed(4)}',
-                          style: const TextStyle(color: Colors.white70, fontSize: 13),
-                        ),
-                      ],
-                    ),
+                    borderRadius: BorderRadius.circular(16),
                   ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '🏆 Rekomendasi Terbaik',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _results[0]['name']?.toString() ?? '-',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Skor MABAC: ${(double.tryParse(_results[0]['score']?.toString() ?? '0') ?? 0.0).toStringAsFixed(4)}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 16),
 
                 // Ranking list
                 ..._results.map((r) {
-                  final rank  = int.parse(r['rank'].toString());
-                  final score = double.parse(r['score'].toString());
-                  final medal = rank == 1 ? '🥇' : rank == 2 ? '🥈' : rank == 3 ? '🥉' : '#$rank';
+                  if (r == null) return const SizedBox.shrink();
+                  final rank  = int.tryParse(r['rank']?.toString() ?? '0') ?? 0;
+                  final score = double.tryParse(r['score']?.toString() ?? '0') ?? 0.0;
+                  final medal = rank == 1
+                      ? '🥇'
+                      : rank == 2
+                          ? '🥈'
+                          : rank == 3
+                              ? '🥉'
+                              : '#$rank';
                   return Card(
                     color: Colors.white,
                     elevation: 0,
@@ -424,9 +555,12 @@ class _EvaluationPageState extends State<EvaluationPage> {
                       side: BorderSide(color: Colors.grey.shade200),
                     ),
                     child: ListTile(
-                      leading: Text(medal, style: const TextStyle(fontSize: 24)),
-                      title: Text(r['name'] ?? '',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      leading: Text(medal,
+                          style: const TextStyle(fontSize: 24)),
+                      title: Text(
+                        r['name']?.toString() ?? '',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       subtitle: Text(
                         score >= 0 ? 'Di atas BAA ✓' : 'Di bawah BAA',
                         style: TextStyle(
@@ -461,7 +595,8 @@ class _EvaluationPageState extends State<EvaluationPage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0194F3),
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ),
@@ -486,14 +621,21 @@ class _EvaluationPageState extends State<EvaluationPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ),
+          const SizedBox(width: 12),
           ElevatedButton(
             onPressed: enabled ? onPressed : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF0194F3),
               foregroundColor: Colors.white,
               disabledBackgroundColor: Colors.grey.shade300,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             child: Text(buttonText),
           ),
@@ -503,7 +645,7 @@ class _EvaluationPageState extends State<EvaluationPage> {
   }
 
   String _formatPrice(dynamic price) {
-    final p = int.parse(price.toString());
+    final p = int.tryParse(price?.toString() ?? '0') ?? 0;
     return p.toString().replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
       (m) => '${m[1]}.',

@@ -41,7 +41,7 @@ class ApiService {
           'name': name,
           'email': email,
           'password': password,
-          'role': 'user', // Default pendaftaran dari aplikasi mobile
+          'role': 'user',
         },
       );
 
@@ -53,16 +53,13 @@ class ApiService {
   }
 
   // ==========================================
-  // 3. CRUD HOTEL: GET ALL HOTELS (DENGAN PROTEKSI DATA)
+  // 3. CRUD HOTEL: GET ALL HOTELS
   // ==========================================
   Future<List<dynamic>> getHotels() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/hotels'));
       if (response.statusCode == 200) {
         final decodedData = json.decode(response.body);
-        
-        // Toleransi Fleksibel: Jika backend membungkus data di dalam objek json ['data'], ambil ['data'].
-        // Jika backend langsung mengembalikan array list utuh, langsung return data tersebut.
         if (decodedData is Map && decodedData.containsKey('data')) {
           return decodedData['data'] ?? [];
         } else if (decodedData is List) {
@@ -75,7 +72,7 @@ class ApiService {
       }
     } catch (e) {
       print("Error Get Hotels API: $e");
-      return []; // Return array kosong agar FutureBuilder di UI tidak crash
+      return [];
     }
   }
 
@@ -174,7 +171,7 @@ class ApiService {
   Future<List<dynamic>> calculateMabac({
     required List<int> hotelIds,
     required int poiId,
-    required Map<String, double> weights, // {'C1': 25.0, 'C2': 20.0, ...}
+    required Map<String, double> weights,
   }) async {
     try {
       final response = await http.post(
@@ -187,14 +184,34 @@ class ApiService {
         }),
       );
 
+      // Log selalu agar mudah debug di console
+      print("MABAC status : ${response.statusCode}");
+      print("MABAC body   : ${response.body}");
+
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
-        if (decoded is Map && decoded.containsKey('data')) {
-          return decoded['data'] ?? [];
+
+        // Backend langsung return array
+        if (decoded is List) {
+          return List<dynamic>.from(decoded);
         }
+
+        // Backend wrap dalam object — coba semua key yang umum dipakai
+        if (decoded is Map) {
+          for (final key in ['data', 'results', 'result', 'rankings', 'hotels']) {
+            if (decoded.containsKey(key) && decoded[key] is List) {
+              return List<dynamic>.from(decoded[key] as List);
+            }
+          }
+          // Tidak ada key list yang dikenal — log untuk debug
+          print("MABAC response keys: ${decoded.keys.toList()}");
+          print("MABAC: Tidak ditemukan key list. Periksa struktur response backend.");
+        }
+
         return [];
       }
-      print("Kalkulasi gagal: ${response.statusCode} ${response.body}");
+
+      print("Kalkulasi gagal: ${response.statusCode} — ${response.body}");
       return [];
     } catch (e) {
       print("Error Calculate MABAC API: $e");
@@ -203,7 +220,7 @@ class ApiService {
   }
 
   // ==========================================
-  // 10. GET HOTELS WITH DISTANCE TO POI
+  // 10. GET HOTELS WITH FILTER
   // ==========================================
   Future<List<dynamic>> getHotelsWithFilter({
     String? query,
@@ -253,15 +270,15 @@ class ApiService {
     }
   }
 
-Future<bool> updatePoi(int id, Map<String, String> data) async {
-  try {
-    final response = await http.put(Uri.parse('$baseUrl/poi/$id'), body: data);
-    return response.statusCode == 200;
-  } catch (e) {
-    print("Error Update POI: $e");
-    return false;
+  Future<bool> updatePoi(int id, Map<String, String> data) async {
+    try {
+      final response = await http.put(Uri.parse('$baseUrl/poi/$id'), body: data);
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error Update POI: $e");
+      return false;
+    }
   }
-}
 
   Future<bool> deletePoi(int id) async {
     try {

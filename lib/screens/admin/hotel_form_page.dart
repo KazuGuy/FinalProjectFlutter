@@ -1,53 +1,55 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../../services/api_services.dart';
 
 class HotelFormPage extends StatefulWidget {
-  final Map<String, dynamic>? hotelData; // Jika null = Tambah, Jika ada isi = Edit
-
-  const HotelFormPage({super.key, this.hotelData});
+  final Map<String, dynamic>? hotel; // null = tambah, isi = edit
+  const HotelFormPage({super.key, this.hotel});
 
   @override
   State<HotelFormPage> createState() => _HotelFormPageState();
 }
 
 class _HotelFormPageState extends State<HotelFormPage> {
-  final _formKey = GlobalKey<FormState>();
-  final ApiService _apiService = ApiService();
+  final ApiService _api = ApiService();
+  final MapController _mapController = MapController();
 
-  // Controller untuk menangkap input teks
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _priceController = TextEditingController();
-  final TextEditingController _ratingController = TextEditingController();
-  final TextEditingController _facCountController = TextEditingController();
-  final TextEditingController _facDetailController = TextEditingController();
-  final TextEditingController _discountController = TextEditingController();
-  final TextEditingController _latController = TextEditingController();
-  final TextEditingController _lngController = TextEditingController();
+  // Form controllers
+  final _nameController        = TextEditingController();
+  final _priceController       = TextEditingController();
+  final _ratingController      = TextEditingController();
+  final _facilitiesCountController = TextEditingController();
+  final _facilitiesDetailController = TextEditingController();
+  final _discountController    = TextEditingController();
+  final _latController         = TextEditingController();
+  final _lngController         = TextEditingController();
 
   String _selectedType = 'hotel';
-  bool _isLoading = false;
-  bool _isEditMode = false;
+  LatLng? _markerPosition;
+  bool _isSaving = false;
 
   final List<String> _types = ['resort', 'villa', 'hotel', 'apartment', 'guesthouse'];
 
   @override
   void initState() {
     super.initState();
-    // Cek apakah ada data hotel yang dikirim (Mode Edit)
-    if (widget.hotelData != null) {
-      _isEditMode = true;
-      _nameController.text = widget.hotelData!['name']?.toString() ?? '';
-      _priceController.text = widget.hotelData!['price']?.toString() ?? '';
-      _ratingController.text = widget.hotelData!['rating']?.toString() ?? '';
-      _facCountController.text = widget.hotelData!['facilities_count']?.toString() ?? '';
-      _facDetailController.text = widget.hotelData!['facilities_detail']?.toString() ?? '';
-      _discountController.text = widget.hotelData!['discount']?.toString() ?? '';
-      _latController.text = widget.hotelData!['latitude']?.toString() ?? '';
-      _lngController.text = widget.hotelData!['longitude']?.toString() ?? '';
-      
-      String dbType = widget.hotelData!['type']?.toString().toLowerCase() ?? 'hotel';
-      if (_types.contains(dbType)) {
-        _selectedType = dbType;
+    if (widget.hotel != null) {
+      final h = widget.hotel!;
+      _nameController.text             = h['name'] ?? '';
+      _priceController.text            = h['price']?.toString() ?? '';
+      _ratingController.text           = h['rating']?.toString() ?? '';
+      _facilitiesCountController.text  = h['facilities_count']?.toString() ?? '';
+      _facilitiesDetailController.text = h['facilities_detail'] ?? '';
+      _discountController.text         = h['discount']?.toString() ?? '0';
+      _selectedType                    = h['type'] ?? 'hotel';
+
+      final lat = double.tryParse(h['latitude']?.toString() ?? '');
+      final lng = double.tryParse(h['longitude']?.toString() ?? '');
+      if (lat != null && lng != null) {
+        _markerPosition = LatLng(lat, lng);
+        _latController.text = lat.toStringAsFixed(6);
+        _lngController.text = lng.toStringAsFixed(6);
       }
     }
   }
@@ -57,328 +59,270 @@ class _HotelFormPageState extends State<HotelFormPage> {
     _nameController.dispose();
     _priceController.dispose();
     _ratingController.dispose();
-    _facCountController.dispose();
-    _facDetailController.dispose();
+    _facilitiesCountController.dispose();
+    _facilitiesDetailController.dispose();
     _discountController.dispose();
     _latController.dispose();
     _lngController.dispose();
     super.dispose();
   }
 
-  // Fungsi simpan data ke API
-  void _submitForm() async {
-    if (!_formKey.currentState!.validate()) return;
+  void _onMapTap(TapPosition tapPosition, LatLng latlng) {
+    setState(() {
+      _markerPosition = latlng;
+      _latController.text = latlng.latitude.toStringAsFixed(6);
+      _lngController.text = latlng.longitude.toStringAsFixed(6);
+    });
+  }
 
-    setState(() => _isLoading = true);
+  Future<void> _save() async {
+    if (_nameController.text.isEmpty ||
+        _priceController.text.isEmpty ||
+        _ratingController.text.isEmpty ||
+        _facilitiesCountController.text.isEmpty ||
+        _facilitiesDetailController.text.isEmpty ||
+        _markerPosition == null) {
+      _showSnackBar('Semua field wajib diisi dan pilih lokasi di peta', Colors.orange);
+      return;
+    }
 
-    Map<String, String> data = {
-      'name': _nameController.text.trim(),
-      'type': _selectedType,
-      'price': _priceController.text.trim(),
-      'rating': _ratingController.text.trim(),
-      'facilities_count': _facCountController.text.trim(),
-      'facilities_detail': _facDetailController.text.trim(),
-      'discount': _discountController.text.trim().isEmpty ? '0' : _discountController.text.trim(),
-      'latitude': _latController.text.trim(),
-      'longitude': _lngController.text.trim(),
+    setState(() => _isSaving = true);
+
+    final data = {
+      'name':              _nameController.text.trim(),
+      'type':              _selectedType,
+      'price':             _priceController.text.trim(),
+      'rating':            _ratingController.text.trim(),
+      'facilities_count':  _facilitiesCountController.text.trim(),
+      'facilities_detail': _facilitiesDetailController.text.trim(),
+      'discount':          _discountController.text.trim().isEmpty ? '0' : _discountController.text.trim(),
+      'latitude':          _latController.text,
+      'longitude':         _lngController.text,
     };
 
-    try {
-      bool success;
-      if (_isEditMode) {
-        int id = int.parse(widget.hotelData!['id'].toString());
-        success = await _apiService.updateHotel(id, data);
-        if (success) {
-          _showSnackbar("Data hotel berhasil diperbarui!", Colors.green);
-        }
-      } else {
-        success = await _apiService.addHotel(data);
-        if (success) {
-          _showSnackbar("Hotel baru berhasil ditambahkan!", Colors.green);
-        }
-      }
+    bool success;
+    if (widget.hotel != null) {
+      success = await _api.updateHotel(int.parse(widget.hotel!['id'].toString()), data);
+    } else {
+      success = await _api.addHotel(data);
+    }
 
-      if (success) {
-        Navigator.pop(context, true); // Kembali ke halaman sebelumnya dengan sinyal refresh
-      } else {
-        _showSnackbar("Gagal menyimpan data ke database. Cek validasi server.", Colors.red);
-      }
-    } catch (e) {
-      _showSnackbar("Gagal menyimpan data: $e", Colors.red);
-    } finally {
-      setState(() => _isLoading = false);
+    setState(() => _isSaving = false);
+
+    if (success) {
+      Navigator.pop(context, true);
+    } else {
+      _showSnackBar('Gagal menyimpan data hotel', Colors.red);
     }
   }
 
-  void _showSnackbar(String message, Color color) {
+  void _showSnackBar(String msg, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(msg), backgroundColor: color),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    const Color travelokaBlue = Color(0xFF0194F3);
+    const travelokaBlue = Color(0xFF0194F3);
+    final isEdit = widget.hotel != null;
+    final initialCenter = _markerPosition ?? const LatLng(-8.65, 115.2);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text(
-          _isEditMode ? "Edit Hotel" : "Tambah Hotel",
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(isEdit ? 'Edit Hotel' : 'Tambah Hotel',
+            style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: travelokaBlue,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          TextButton(
+            onPressed: _isSaving ? null : _save,
+            child: _isSaving
+                ? const SizedBox(width: 20, height: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Text('Simpan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+
+            // ── Peta ──────────────────────────────────────────
+            const Text('Lokasi Hotel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const SizedBox(height: 4),
+            const Text('Ketuk peta untuk menentukan koordinat hotel',
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                height: 260,
+                child: FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: initialCenter,
+                    initialZoom: _markerPosition != null ? 15 : 11,
+                    onTap: _onMapTap,
+                  ),
                   children: [
-                    const Text(
-                      "Informasi Hotel",
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.finalprojectdss.app',
                     ),
-                    const Text(
-                      "Lengkapi semua parameter kriteria untuk perangkingan MABAC.",
-                      style: TextStyle(fontSize: 14, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // INPUT NAMA HOTEL
-                    _buildTextField(
-                      controller: _nameController,
-                      label: "Nama Hotel (Ciri Fisik / Brand)",
-                      hint: "Masukkan nama hotel",
-                      icon: Icons.hotel_rounded,
-                      validator: (val) => val!.isEmpty ? "Nama hotel wajib diisi" : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // TIPE PENGINAPAN
-                    const Text("Tipe Akomodasi (C6)", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(color: Colors.grey.shade300, width: 1),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedType,
-                          isExpanded: true,
-                          icon: const Icon(Icons.arrow_drop_down_rounded, color: travelokaBlue, size: 30),
-                          items: _types.map((type) {
-                            return DropdownMenuItem<String>(
-                              value: type,
-                              child: Text(type.toUpperCase()),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() => _selectedType = val);
-                            }
-                          },
+                    if (_markerPosition != null)
+                      MarkerLayer(markers: [
+                        Marker(
+                          point: _markerPosition!,
+                          width: 40,
+                          height: 40,
+                          child: const Icon(Icons.location_pin, color: travelokaBlue, size: 40),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // INPUT HARGA PER MALAM
-                    _buildTextField(
-                      controller: _priceController,
-                      label: "Harga per Malam (C1 - Cost)",
-                      hint: "Contoh: 500000",
-                      icon: Icons.money_rounded,
-                      keyboardType: TextInputType.number,
-                      validator: (val) {
-                        if (val!.isEmpty) return "Harga wajib diisi";
-                        if (double.tryParse(val) == null) return "Harga harus berupa angka desimal/bulat";
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // RATING (0 - 10)
-                    _buildTextField(
-                      controller: _ratingController,
-                      label: "Skor Review / Rating (C2 - Benefit, Nilai 0.0 - 10.0)",
-                      hint: "Contoh: 8.5",
-                      icon: Icons.star_rounded,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      validator: (val) {
-                        if (val!.isEmpty) return "Rating wajib diisi";
-                        final rating = double.tryParse(val);
-                        if (rating == null) return "Rating harus berupa angka desimal";
-                        if (rating < 0 || rating > 10) return "Skor rating harus di kisaran 0.0 sampai 10.0";
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // JUMLAH FASILITAS
-                    _buildTextField(
-                      controller: _facCountController,
-                      label: "Jumlah Fasilitas Utama (C4 - Benefit)",
-                      hint: "Contoh: 8",
-                      icon: Icons.room_service_rounded,
-                      keyboardType: TextInputType.number,
-                      validator: (val) {
-                        if (val!.isEmpty) return "Jumlah fasilitas wajib diisi";
-                        if (int.tryParse(val) == null) return "Jumlah fasilitas harus berupa angka bulat";
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // DETAIL FASILITAS
-                    _buildTextField(
-                      controller: _facDetailController,
-                      label: "Rincian Detail Fasilitas (Koma separated)",
-                      hint: "Contoh: AC, Wi-Fi, Kolam Renang, Spa, Sarapan Gratis",
-                      icon: Icons.list_alt_rounded,
-                      maxLines: 2,
-                      validator: (val) => val!.isEmpty ? "Rincian fasilitas wajib diisi" : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // DISKON
-                    _buildTextField(
-                      controller: _discountController,
-                      label: "Promo Diskon % (C5 - Benefit, Nilai 0 - 100)",
-                      hint: "Contoh: 10 (tulis 0 jika tidak ada)",
-                      icon: Icons.percent_rounded,
-                      keyboardType: TextInputType.number,
-                      validator: (val) {
-                        if (val != null && val.isNotEmpty) {
-                          final disc = int.tryParse(val);
-                          if (disc == null) return "Diskon harus berupa angka bulat";
-                          if (disc < 0 || disc > 100) return "Diskon berada di kisaran 0% - 100%";
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // MAP COORDINATES
-                    const Text("Koordinat Lokasi (Untuk Kriteria C3 - Jarak POI)", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _latController,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                            decoration: _inputDecorationStyle("Latitude", Icons.location_on_outlined),
-                            validator: (val) {
-                              if (val!.isEmpty) return "Wajib diisi";
-                              if (double.tryParse(val) == null) return "Harus angka";
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _lngController,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                            decoration: _inputDecorationStyle("Longitude", Icons.location_on_outlined),
-                            validator: (val) {
-                              if (val!.isEmpty) return "Wajib diisi";
-                              if (double.tryParse(val) == null) return "Harus angka";
-                              return null;
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
-
-                    // TOMBOL SIMPAN
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton.icon(
-                        onPressed: _submitForm,
-                        icon: const Icon(Icons.save_rounded, color: Colors.white),
-                        label: Text(
-                          _isEditMode ? "Perbarui Data" : "Simpan Hotel",
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: travelokaBlue,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                          elevation: 2,
-                        ),
-                      ),
-                    ),
+                      ]),
                   ],
                 ),
               ),
             ),
-    );
-  }
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _coordField(_latController, 'Latitude'),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _coordField(_lngController, 'Longitude'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-    int maxLines = 1,
-    String? Function(String?)? validator,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          keyboardType: keyboardType,
-          maxLines: maxLines,
-          validator: validator,
-          decoration: _inputDecorationStyle(hint, icon),
+            // ── Form Fields ───────────────────────────────────
+            const Text('Informasi Hotel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const SizedBox(height: 12),
+
+            _inputField(_nameController, 'Nama Hotel', Icons.hotel_rounded),
+            const SizedBox(height: 12),
+
+            // Tipe
+            const Text('Tipe Penginapan', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _types.map((type) {
+                final isSelected = _selectedType == type;
+                return ChoiceChip(
+                  label: Text(type.toUpperCase()),
+                  selected: isSelected,
+                  selectedColor: const Color(0xFFEAF7FF),
+                  labelStyle: TextStyle(
+                    color: isSelected ? travelokaBlue : Colors.black87,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 12,
+                  ),
+                  onSelected: (_) => setState(() => _selectedType = type),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Expanded(child: _inputField(_priceController, 'Harga/Malam (Rp)', Icons.payments_rounded, isNumber: true)),
+                const SizedBox(width: 12),
+                Expanded(child: _inputField(_ratingController, 'Skor Review (0-10)', Icons.star_rounded, isDecimal: true)),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Expanded(child: _inputField(_facilitiesCountController, 'Jml Fasilitas', Icons.category_rounded, isNumber: true)),
+                const SizedBox(width: 12),
+                Expanded(child: _inputField(_discountController, 'Diskon (%)', Icons.local_offer_rounded, isNumber: true)),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            _inputField(_facilitiesDetailController, 'Detail Fasilitas', Icons.list_rounded, maxLines: 3),
+            const SizedBox(height: 24),
+
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _isSaving ? null : _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: travelokaBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: _isSaving
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : Text(isEdit ? 'Simpan Perubahan' : 'Tambah Hotel',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
         ),
-      ],
+      ),
     );
   }
 
-  InputDecoration _inputDecorationStyle(String hint, IconData icon) {
-    const Color travelokaBlue = Color(0xFF0194F3);
-    return InputDecoration(
-      hintText: hint,
-      filled: true,
-      fillColor: Colors.white,
-      prefixIcon: Icon(icon, color: travelokaBlue),
-      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+  Widget _inputField(TextEditingController controller, String hint, IconData icon,
+      {bool isNumber = false, bool isDecimal = false, int maxLines = 1}) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      keyboardType: isDecimal
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : isNumber
+              ? TextInputType.number
+              : TextInputType.text,
+      decoration: InputDecoration(
+        hintText: hint,
+        prefixIcon: Icon(icon, color: Colors.grey, size: 20),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+    );
+  }
+
+  Widget _coordField(TextEditingController controller, String hint) {
+    return TextField(
+      controller: controller,
+      readOnly: true,
+      decoration: InputDecoration(
+        hintText: hint,
+        filled: true,
+        fillColor: Colors.grey.shade100,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        isDense: true,
       ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(color: travelokaBlue, width: 1.5),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(color: Colors.redAccent, width: 1),
-      ),
+      style: const TextStyle(fontSize: 12, color: Colors.grey),
     );
   }
 }

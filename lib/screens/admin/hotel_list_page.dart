@@ -250,7 +250,7 @@ class _HotelListPageState extends State<HotelListPage> {
                               bool? isRefreshed = await Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => HotelFormPage(hotelData: hotel),
+                                  builder: (context) => HotelFormPage(hotel: hotel),
                                 ),
                               );
                               if (isRefreshed == true) _refreshHotelList();

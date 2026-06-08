@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/api_services.dart';
+import 'package:flutter_map/flutter_map.dart'; // Core library
+import 'package:latlong2/latlong.dart';      // Provides LatLng
 
 class PoiListPage extends StatefulWidget {
   const PoiListPage({super.key});
@@ -32,7 +34,15 @@ class _PoiListPageState extends State<PoiListPage> {
     final nameController = TextEditingController(text: poi?['nama_poi'] ?? '');
     final latController  = TextEditingController(text: poi?['latitude']?.toString() ?? '');
     final lngController  = TextEditingController(text: poi?['longitude']?.toString() ?? '');
+    final mapController  = MapController();
     final isEdit = poi != null;
+
+    LatLng? markerPos;
+    final initLat = double.tryParse(poi?['latitude']?.toString() ?? '');
+    final initLng = double.tryParse(poi?['longitude']?.toString() ?? '');
+    if (initLat != null && initLng != null) {
+      markerPos = LatLng(initLat, initLng);
+    }
 
     showModalBottomSheet(
       context: context,
@@ -40,83 +50,162 @@ class _PoiListPageState extends State<PoiListPage> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              isEdit ? 'Edit POI' : 'Tambah POI',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nameController,
-              decoration: _inputDecoration('Nama POI', Icons.place_rounded),
-            ),
-            const SizedBox(height: 12),
-            Row(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20, right: 20, top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: latController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                    decoration: _inputDecoration('Latitude', Icons.location_on_outlined),
+                Text(isEdit ? 'Edit POI' : 'Tambah POI',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    hintText: 'Nama POI',
+                    prefixIcon: const Icon(Icons.place_rounded, color: Colors.grey),
+                    filled: true,
+                    fillColor: const Color(0xFFF5F7FA),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: lngController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                    decoration: _inputDecoration('Longitude', Icons.location_on_outlined),
+                const SizedBox(height: 12),
+
+                // Peta
+                const Text('Ketuk peta untuk pilih lokasi',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    height: 220,
+                    child: FlutterMap(
+                      mapController: mapController,
+                      options: MapOptions(
+                        initialCenter: markerPos ?? const LatLng(-8.65, 115.2),
+                        initialZoom: markerPos != null ? 14 : 11,
+                        onTap: (_, latlng) {
+                          setModalState(() {
+                            markerPos = latlng;
+                            latController.text = latlng.latitude.toStringAsFixed(6);
+                            lngController.text = latlng.longitude.toStringAsFixed(6);
+                          });
+                        },
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.finalprojectdss.app',
+                        ),
+                        if (markerPos != null)
+                          MarkerLayer(markers: [
+                            Marker(
+                              point: markerPos!,
+                              width: 40,
+                              height: 40,
+                              child: const Icon(Icons.location_pin,
+                                  color: Color(0xFFFF6D00), size: 40),
+                            ),
+                          ]),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: latController,
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          hintText: 'Latitude',
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: lngController,
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          hintText: 'Longitude',
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      if (nameController.text.isEmpty || markerPos == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Nama dan lokasi wajib diisi')),
+                        );
+                        return;
+                      }
+                      final data = {
+                        'nama_poi':  nameController.text.trim(),
+                        'latitude':  latController.text,
+                        'longitude': lngController.text,
+                      };
+                      bool success;
+                      if (isEdit) {
+                        success = await _api.updatePoi(int.parse(poi['id'].toString()), data);
+                      } else {
+                        success = await _api.addPoi(data);
+                      }
+                      Navigator.pop(context);
+                      if (success) {
+                        _loadPois();
+                        _showSnackBar(isEdit ? 'POI berhasil diperbarui' : 'POI berhasil ditambahkan', Colors.green);
+                      } else {
+                        _showSnackBar('Gagal menyimpan POI', Colors.red);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0194F3),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text(isEdit ? 'Simpan Perubahan' : 'Tambah POI'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: () async {
-                  final data = {
-                    'nama_poi':  nameController.text.trim(),
-                    'latitude':  latController.text.trim(),
-                    'longitude': lngController.text.trim(),
-                  };
-
-                  bool success;
-                  if (isEdit) {
-                    success = await _api.updatePoi(int.parse(poi['id'].toString()), data);
-                  } else {
-                    success = await _api.addPoi(data);
-                  }
-
-                  Navigator.pop(context);
-                  if (success) {
-                    _loadPois();
-                    _showSnackBar(
-                      isEdit ? 'POI berhasil diperbarui' : 'POI berhasil ditambahkan',
-                      Colors.green,
-                    );
-                  } else {
-                    _showSnackBar('Gagal menyimpan POI', Colors.red);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0194F3),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: Text(isEdit ? 'Simpan Perubahan' : 'Tambah POI'),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
